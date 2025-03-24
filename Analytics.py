@@ -1,4 +1,9 @@
 import json
+import pandas
+import pygsheets
+
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1GbQKx2yOoD3YKk16v19zOgX5A18XVtiKbzps846vpmk/edit?gid=0#gid=0"
+
 uidMapping = {
     956473791: "Jarod",
     868467988: "Zack",
@@ -69,7 +74,7 @@ def getBanData(data):
             winrate = heroWinrates[1] / total
             winrates[heroIdMapping[hero]] = [round(winrate, 2), round(total, 2)]
     winrates = {k: v for k, v in sorted(winrates.items(), key=lambda item: item[1][0])}
-    print(json.dumps(winrates, indent=4))
+    return winrates
 
 def getOurBanData(data):
     # [loss, win, draw]
@@ -95,7 +100,7 @@ def getOurBanData(data):
             winrate = heroWinrates[1] / total
             winrates[heroIdMapping[hero]] = [round(winrate, 2), round(total, 2)]
     winrates = {k: v for k, v in sorted(winrates.items(), key=lambda item: item[1][0])}
-    print(json.dumps(winrates, indent=4))
+    return winrates
 
 def getEnemyBanData(data):
     # [loss, win, draw]
@@ -121,7 +126,7 @@ def getEnemyBanData(data):
             winrate = heroWinrates[1] / total
             winrates[heroIdMapping[hero]] = [round(winrate, 2), round(total, 2)]
     winrates = {k: v for k, v in sorted(winrates.items(), key=lambda item: item[1][0])}
-    print(json.dumps(winrates, indent=4))
+    return winrates
 
 def getHeroMatchupData(data):
     heroes = {hero: {"winrates": [0, 0, 0], "mvps/svps": 0} for hero in heroIdMapping.keys()}
@@ -152,7 +157,7 @@ def getHeroMatchupData(data):
             winrate = heroWinrates[0] / total
             winrates[heroIdMapping[hero]] = [round(winrate, 2), round(total, 2), round(heroes[hero]["mvps/svps"], 2)]
     winrates = {k: v for k, v in sorted(winrates.items(), key=lambda item: item[1][0])}
-    print(json.dumps(winrates, indent=4))
+    return winrates
 
 def getHeroTeamData(data):
     heroes = {hero: {"winrates": [0, 0, 0], "mvps/svps": 0} for hero in heroIdMapping.keys()}
@@ -183,7 +188,7 @@ def getHeroTeamData(data):
             winrate = heroWinrates[1] / total
             winrates[heroIdMapping[hero]] = [round(winrate, 2), round(total, 2), round(heroes[hero]["mvps/svps"], 2)]
     winrates = {k: v for k, v in sorted(winrates.items(), key=lambda item: item[1][0])}
-    print(json.dumps(winrates, indent=4))
+    return winrates
 
 def getAccuracyData(data):
     # [accuracy, totalDuration]
@@ -220,17 +225,64 @@ def getMVPCount(data):
                 mvps[svp] = 1
     return mvps
 
+def formatMatchupData(enemyData, friendlyData):
+    df = pandas.DataFrame(columns=["hero", "games_with", "games_against", "winrate_with", "winrate_against", "mvps_with", "mvps_against"])
+    for i, hero in enumerate(enemyData):
+        withData = friendlyData[hero]
+        vsData = enemyData[hero]
+        df.loc[i] = [
+            hero,
+            withData[1],
+            vsData[1],
+            withData[0],
+            vsData[0],
+            withData[2],
+            vsData[2]
+        ]
+    return df
+
+def formatBanData(allBans, ourBans, enemyBans):
+    df = pandas.DataFrame(columns=["hero", "total_banned", "we_banned", "enemy_banned", "winrate_banned", "winrate_we_banned", "winrate_enemy_banned"])
+    for i, hero in enumerate(allBans):
+        banData = allBans.get(hero, [0,0])
+        ourBanData = ourBans.get(hero, [0,0])
+        enemyBanData = enemyBans.get(hero, [0,0])
+
+        df.loc[i] = [
+            hero,
+            banData[1],
+            ourBanData[1],
+            enemyBanData[1],
+            banData[0],
+            ourBanData[0],
+            enemyBanData[0],
+        ]
+    return df
+
+def uploadData(sheet, df):
+    gc = pygsheets.authorize(service_file='creds/sefeb20220208-7226846582b9.json')
+    sh = gc.open_by_url(SHEET_URL)
+    wks = sh[sheet]
+    wks.set_dataframe(df, 'A1')
+
 if __name__ == "__main__":
     data = {}
     with open(f"data/Xerronn_all_competitive.json") as inf:
         data = json.loads(inf.read())
-    # print(getHeroMatchupData(data))
+    heroEnemyData = getHeroMatchupData(data)
+    heroFriendlyData = getHeroTeamData(data)
+    winratesDf = formatMatchupData(heroEnemyData, heroFriendlyData)
+    # uploadData(0, winratesDf)
+
+    allBans = getBanData(data)
+    ourBans = getOurBanData(data)
+    enemyBans = getEnemyBanData(data)
+    bansDf = formatBanData(allBans, ourBans, enemyBans)
+    uploadData(1, bansDf)
+
+    # getAccuracyData(data)
     # print(getMVPCount(data))
-    # print(getHeroTeamData(data))
-    # getBanData(data)
-    # getOurBanData(data)
-    # getEnemyBanData(data)
-    getAccuracyData(data)
+
 
 
 
